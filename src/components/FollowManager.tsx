@@ -14,25 +14,11 @@ import {
 } from "lucide-react";
 import FileImport from "./FileImport";
 import { checkFollowingUser, followUser, unfollowUser } from "@/lib/github";
+import { parseUserLines } from "@/lib/parsers";
 import type { MigrateUserItem } from "@/types/github";
 
 interface FollowManagerProps {
   token: string;
-}
-
-function parseUserLines(lines: string[]): string[] {
-  return lines
-    .map((line) => {
-      // Handle CSV: first column is username (may be quoted)
-      if (line.includes(",")) {
-        const first = line.split(",")[0];
-        return first.replace(/^"|"$/g, "").trim();
-      }
-      // Handle plain usernames or profile URLs
-      let u = line.replace(/^https?:\/\/github\.com\//, "").replace(/\/+$/, "");
-      return u;
-    })
-    .filter((u) => u && !u.includes("/") && u !== "username");
 }
 
 export default function FollowManager({ token }: FollowManagerProps) {

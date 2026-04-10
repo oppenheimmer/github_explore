@@ -38,3 +38,7 @@ yarn-error.log*
 
 # typescript
 *.tsbuildinfo
+
+#user generated files
+starred_repos.txt
+following.txt

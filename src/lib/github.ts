@@ -1,28 +1,65 @@
-import { GitHubUser, StarredRepo, FollowingUser } from "@/types/github";
+import type { GitHubUser, StarredRepo, FollowingUser } from "@/types/github";
 
 const GITHUB_API = "https://api.github.com";
 const PER_PAGE = 100;
 
+// ── internal helpers ────────────────────────────────────────────────
+
 function headers(token?: string): HeadersInit {
-  const h: HeadersInit = {
-    Accept: "application/vnd.github.v3+json",
-  };
-  if (token) {
-    h.Authorization = `Bearer ${token}`;
-  }
+  const h: HeadersInit = { Accept: "application/vnd.github.v3+json" };
+  if (token) h.Authorization = `Bearer ${token}`;
   return h;
 }
 
-function parseNextLink(linkHeader: string | null): string | null {
-  if (!linkHeader) return null;
-  const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
-  return match ? match[1] : null;
+function parseNextLink(link: string | null): string | null {
+  if (!link) return null;
+  const m = link.match(/<([^>]+)>;\s*rel="next"/);
+  return m ? m[1] : null;
 }
 
-export async function fetchUser(
-  username: string,
-  token?: string
-): Promise<GitHubUser> {
+function repoUrl(repo: string): string {
+  const [owner, name] = repo.split("/");
+  return `${GITHUB_API}/user/starred/${encodeURIComponent(owner)}/${encodeURIComponent(name)}`;
+}
+
+function userUrl(username: string): string {
+  return `${GITHUB_API}/user/following/${encodeURIComponent(username)}`;
+}
+
+/**
+ * Generic paginated GET that accumulates items from every page.
+ * If `throwOnError` is false the loop silently stops on a non-OK response
+ * (used by fetchAllStarredRepoNames where partial results are acceptable).
+ */
+async function paginatedFetch<T>(
+  startUrl: string,
+  token: string | undefined,
+  onProgress: ((loaded: number) => void) | undefined,
+  errorLabel: string,
+  throwOnError = true,
+): Promise<T[]> {
+  const all: T[] = [];
+  let url: string | null = startUrl;
+
+  while (url) {
+    const res = await fetch(url, { headers: headers(token) });
+    if (!res.ok) {
+      if (throwOnError) throw new Error(`${errorLabel}: ${res.status} ${res.statusText}`);
+      break;
+    }
+    const data: T[] = await res.json();
+    if (data.length === 0) break;
+    all.push(...data);
+    onProgress?.(all.length);
+    url = parseNextLink(res.headers.get("Link"));
+  }
+
+  return all;
+}
+
+// ── explorer: read-only fetchers ────────────────────────────────────
+
+export async function fetchUser(username: string, token?: string): Promise<GitHubUser> {
   const res = await fetch(`${GITHUB_API}/users/${encodeURIComponent(username)}`, {
     headers: headers(token),
   });
@@ -35,113 +72,75 @@ export async function fetchUser(
   return res.json();
 }
 
-export async function fetchStarredRepos(
+export function fetchStarredRepos(
   username: string,
   token?: string,
-  onProgress?: (loaded: number) => void
+  onProgress?: (loaded: number) => void,
 ): Promise<StarredRepo[]> {
-  const all: StarredRepo[] = [];
-  let url: string | null =
-    `${GITHUB_API}/users/${encodeURIComponent(username)}/starred?per_page=${PER_PAGE}`;
-
-  while (url) {
-    const res = await fetch(url, { headers: headers(token) });
-    if (!res.ok) {
-      throw new Error(`Failed to fetch starred repos: ${res.status} ${res.statusText}`);
-    }
-    const data: StarredRepo[] = await res.json();
-    all.push(...data);
-    onProgress?.(all.length);
-    url = parseNextLink(res.headers.get("Link"));
-  }
-
-  return all;
+  return paginatedFetch<StarredRepo>(
+    `${GITHUB_API}/users/${encodeURIComponent(username)}/starred?per_page=${PER_PAGE}`,
+    token,
+    onProgress,
+    "Failed to fetch starred repos",
+  );
 }
 
-export async function fetchFollowing(
+export function fetchFollowing(
   username: string,
   token?: string,
-  onProgress?: (loaded: number) => void
+  onProgress?: (loaded: number) => void,
 ): Promise<FollowingUser[]> {
-  const all: FollowingUser[] = [];
-  let url: string | null =
-    `${GITHUB_API}/users/${encodeURIComponent(username)}/following?per_page=${PER_PAGE}`;
-
-  while (url) {
-    const res = await fetch(url, { headers: headers(token) });
-    if (!res.ok) {
-      throw new Error(`Failed to fetch following: ${res.status} ${res.statusText}`);
-    }
-    const data: FollowingUser[] = await res.json();
-    all.push(...data);
-    onProgress?.(all.length);
-    url = parseNextLink(res.headers.get("Link"));
-  }
-
-  return all;
+  return paginatedFetch<FollowingUser>(
+    `${GITHUB_API}/users/${encodeURIComponent(username)}/following?per_page=${PER_PAGE}`,
+    token,
+    onProgress,
+    "Failed to fetch following",
+  );
 }
 
-// --- Migrate helpers ---
+// ── migrate: write helpers ──────────────────────────────────────────
 
 export async function fetchAllStarredRepoNames(
   token: string,
-  onProgress?: (loaded: number) => void
+  onProgress?: (loaded: number) => void,
 ): Promise<Set<string>> {
-  const names = new Set<string>();
-  let url: string | null = `${GITHUB_API}/user/starred?per_page=${PER_PAGE}`;
-
-  while (url) {
-    const res = await fetch(url, { headers: headers(token) });
-    if (!res.ok) break;
-    const data: { full_name: string }[] = await res.json();
-    if (data.length === 0) break;
-    data.forEach((r) => names.add(r.full_name));
-    onProgress?.(names.size);
-    url = parseNextLink(res.headers.get("Link"));
-  }
-
-  return names;
+  const items = await paginatedFetch<{ full_name: string }>(
+    `${GITHUB_API}/user/starred?per_page=${PER_PAGE}`,
+    token,
+    onProgress,
+    "",
+    false,
+  );
+  return new Set(items.map((r) => r.full_name));
 }
 
 export async function starRepo(repo: string, token: string): Promise<boolean> {
-  const res = await fetch(
-    `${GITHUB_API}/user/starred/${encodeURIComponent(repo.split("/")[0])}/${encodeURIComponent(repo.split("/")[1])}`,
-    { method: "PUT", headers: { ...headers(token), "Content-Length": "0" } }
-  );
+  const res = await fetch(repoUrl(repo), {
+    method: "PUT",
+    headers: { ...headers(token), "Content-Length": "0" },
+  });
   return res.status === 204;
 }
 
 export async function unstarRepo(repo: string, token: string): Promise<boolean> {
-  const res = await fetch(
-    `${GITHUB_API}/user/starred/${encodeURIComponent(repo.split("/")[0])}/${encodeURIComponent(repo.split("/")[1])}`,
-    { method: "DELETE", headers: headers(token) }
-  );
+  const res = await fetch(repoUrl(repo), { method: "DELETE", headers: headers(token) });
   return res.status === 204;
 }
 
-export async function checkFollowingUser(
-  username: string,
-  token: string
-): Promise<boolean> {
-  const res = await fetch(
-    `${GITHUB_API}/user/following/${encodeURIComponent(username)}`,
-    { headers: headers(token) }
-  );
+export async function checkFollowingUser(username: string, token: string): Promise<boolean> {
+  const res = await fetch(userUrl(username), { headers: headers(token) });
   return res.status === 204;
 }
 
 export async function followUser(username: string, token: string): Promise<boolean> {
-  const res = await fetch(
-    `${GITHUB_API}/user/following/${encodeURIComponent(username)}`,
-    { method: "PUT", headers: { ...headers(token), "Content-Length": "0" } }
-  );
+  const res = await fetch(userUrl(username), {
+    method: "PUT",
+    headers: { ...headers(token), "Content-Length": "0" },
+  });
   return res.status === 204;
 }
 
 export async function unfollowUser(username: string, token: string): Promise<boolean> {
-  const res = await fetch(
-    `${GITHUB_API}/user/following/${encodeURIComponent(username)}`,
-    { method: "DELETE", headers: headers(token) }
-  );
+  const res = await fetch(userUrl(username), { method: "DELETE", headers: headers(token) });
   return res.status === 204;
 }

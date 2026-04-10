@@ -9,7 +9,6 @@ export interface GitHubUser {
   location: string | null;
   bio: string | null;
   public_repos: number;
-  public_gists: number;
   followers: number;
   following: number;
   type: "User" | "Organization";

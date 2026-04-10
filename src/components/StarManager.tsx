@@ -14,18 +14,11 @@ import {
 } from "lucide-react";
 import FileImport from "./FileImport";
 import { fetchAllStarredRepoNames, starRepo, unstarRepo } from "@/lib/github";
+import { parseRepoLines } from "@/lib/parsers";
 import type { MigrateRepoItem } from "@/types/github";
 
 interface StarManagerProps {
   token: string;
-}
-
-function parseRepoLines(lines: string[]): string[] {
-  return lines.map((line) => {
-    let repo = line.replace(/^https?:\/\/github\.com\//, "");
-    repo = repo.replace(/\/+$/, "");
-    return repo;
-  }).filter((r) => r.includes("/"));
 }
 
 export default function StarManager({ token }: StarManagerProps) {

@@ -36,6 +36,7 @@ A single-page web app with two main tabs:
 | Styling | [Tailwind CSS v4](https://tailwindcss.com) |
 | Components | [shadcn/ui](https://ui.shadcn.com) (base-nova style) |
 | Icons | [Lucide React](https://lucide.dev) |
+| Testing | [Vitest 4](https://vitest.dev) + [React Testing Library](https://testing-library.com/docs/react-testing-library/intro/) + [jsdom](https://github.com/jsdom/jsdom) |
 
 ---
 
@@ -43,6 +44,7 @@ A single-page web app with two main tabs:
 
 - **Node.js** ≥ 18
 - **npm**, **yarn**, **pnpm**, or **bun**
+- **(Optional)** [GitHub CLI](https://cli.github.com/) (`gh`) — used by the CLI integration tests and to generate input files for migration.
 
 ---
 
@@ -51,7 +53,7 @@ A single-page web app with two main tabs:
 ```bash
 # 1. Clone the repository
 git clone <repo-url>
-cd github_transfer
+cd github_explore
 
 # 2. Install dependencies
 npm install        # or yarn / pnpm install / bun install
@@ -63,6 +65,49 @@ npx next dev --webpack
 Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 > **Note:** Do **not** use the default `npm run dev` — it launches Turbopack, which crashes in a reload loop on Next.js 16.2.3. Always start with `npx next dev --webpack`.
+
+---
+
+## Testing
+
+The project includes **174 tests** across **17 test files** using [Vitest](https://vitest.dev), [React Testing Library](https://testing-library.com), and [jsdom](https://github.com/jsdom/jsdom).
+
+```bash
+# Run all tests once
+npm test
+
+# Run in watch mode during development
+npm run test:watch
+```
+
+### Test Suite Overview
+
+| Category | Files | Tests | Description |
+|----------|-------|-------|-------------|
+| **Lib — parsers** | `src/lib/__tests__/parsers.test.ts` | 15 | `parseRepoLines` and `parseUserLines` with edge cases (URLs, CSV, whitespace, trailing slashes) |
+| **Lib — github** | `src/lib/__tests__/github.test.ts` | 27 | All 9 API functions with mocked `fetch` (auth headers, pagination, error codes) |
+| **Lib — export** | `src/lib/__tests__/export.test.ts` | 8 | CSV/JSON export (field escaping, arrays, nulls, empty data) |
+| **Lib — utils** | `src/lib/__tests__/utils.test.ts` | 6 | `cn()` class-merge utility |
+| **Components** | `src/components/__tests__/*.test.tsx` | 87 | All 10 components with RTL and user-event interactions |
+| **Page** | `src/app/__tests__/page.test.tsx` | 10 | Main Home page with mocked API calls, tab switching, search, error handling |
+| **Migrate integration** | `src/__tests__/migrate-integration.test.ts` | 14 | Reads real `starred_repos.txt` (387 repos) and `following.txt` (43 users), parses them, exercises every API helper with mocked responses |
+| **CLI integration** | `src/__tests__/gh-cli.test.ts` | 7 | Validates `gh api` command output formats (auto-skipped if `gh` is not authenticated) |
+
+### Test Configuration
+
+| File | Purpose |
+|------|---------|
+| `vitest.config.ts` | Vitest config — jsdom environment, `@/*` path alias, setup file, CSS disabled |
+| `src/test/setup.ts` | Global setup — jest-dom matchers, `localStorage` mock, `URL.createObjectURL` mock |
+
+### Test Fixtures
+
+Two real-world input files in the project root are used by the migrate integration tests:
+
+- **`starred_repos.txt`** — 387 `owner/repo` lines (starred repos)
+- **`following.txt`** — 43 plain usernames (following list)
+
+These files are also usable as manual test inputs for the Migrate tab in the browser.
 
 ---
 
@@ -170,28 +215,38 @@ Feed this file into **Migrate → Follow Users** via paste or file upload.
 ```
 src/
 ├── app/
-│   ├── globals.css        # Tailwind base styles & CSS variables
-│   ├── layout.tsx         # Root layout — metadata, fonts, html/body shell
-│   ├── page.tsx           # Main page — orchestrates state, data fetching, and UI composition
+│   ├── __tests__/
+│   │   └── page.test.tsx          # Main page tests
+│   ├── globals.css                # Tailwind base styles & CSS variables
+│   ├── layout.tsx                 # Root layout — metadata, fonts, html/body shell
+│   ├── page.tsx                   # Main page — orchestrates state, data fetching, and UI composition
 │   └── favicon.ico
 ├── components/
-│   ├── TokenInput.tsx     # GitHub PAT input with show/hide toggle & localStorage persistence
-│   ├── UserSearch.tsx     # Username search form
-│   ├── ProfileCard.tsx    # User/org profile card (avatar, bio, stats)
-│   ├── StarredReposTable.tsx  # Sortable & filterable table of starred repos + export buttons
-│   ├── FollowingList.tsx  # Filterable card grid of followed accounts + export buttons
-│   ├── ExportButtons.tsx  # Reusable CSV/JSON download button pair
-│   ├── MigrateTab.tsx     # Migrate tab container with Star Repos / Follow Users sub-tabs
-│   ├── StarManager.tsx    # Import, check, star/unstar repos from a list
-│   ├── FollowManager.tsx  # Import, check, follow/unfollow users from a list
-│   ├── FileImport.tsx     # Reusable paste/upload file-import component
-│   └── ui/                # shadcn/ui primitives (avatar, badge, button, card, input, separator, skeleton, table, tabs)
+│   ├── __tests__/                 # Component tests (10 files)
+│   ├── TokenInput.tsx             # GitHub PAT input with show/hide toggle & localStorage persistence
+│   ├── UserSearch.tsx             # Username search form
+│   ├── ProfileCard.tsx            # User/org profile card (avatar, bio, stats)
+│   ├── StarredReposTable.tsx      # Sortable & filterable table of starred repos + export buttons
+│   ├── FollowingList.tsx          # Filterable card grid of followed accounts + export buttons
+│   ├── ExportButtons.tsx          # Reusable CSV/JSON download button pair
+│   ├── MigrateTab.tsx             # Migrate tab container with Star Repos / Follow Users sub-tabs
+│   ├── StarManager.tsx            # Import, check, star/unstar repos from a list
+│   ├── FollowManager.tsx          # Import, check, follow/unfollow users from a list
+│   ├── FileImport.tsx             # Reusable paste/upload file-import component
+│   └── ui/                        # shadcn/ui primitives (avatar, badge, button, card, input, separator, skeleton, table, tabs)
 ├── lib/
-│   ├── github.ts          # GitHub REST API client (explore + migrate endpoints)
-│   ├── export.ts          # CSV & JSON blob-download helpers
-│   └── utils.ts           # Tailwind class-merge utility (cn)
+│   ├── __tests__/                 # Lib tests (4 files)
+│   ├── github.ts                  # GitHub REST API client (generic paginated fetcher + explore/migrate endpoints)
+│   ├── export.ts                  # CSV & JSON blob-download helpers
+│   ├── parsers.ts                 # Line parsers for repo and user import (used by StarManager / FollowManager)
+│   └── utils.ts                   # Tailwind class-merge utility (cn)
+├── test/
+│   └── setup.ts                   # Vitest global setup (jest-dom, localStorage mock, URL.createObjectURL mock)
+├── __tests__/
+│   ├── gh-cli.test.ts             # GitHub CLI integration tests
+│   └── migrate-integration.test.ts  # Migrate pipeline integration tests (reads real input files)
 └── types/
-    └── github.ts          # TypeScript interfaces: GitHubUser, StarredRepo, FollowingUser, MigrateRepoItem, MigrateUserItem
+    └── github.ts                  # TypeScript interfaces: GitHubUser, StarredRepo, FollowingUser, MigrateRepoItem, MigrateUserItem
 ```
 
 ---
@@ -207,8 +262,8 @@ src/
 | `FollowingList` | Displays followed accounts in a responsive grid of cards. Supports filtering and export. |
 | `ExportButtons` | Generic pair of CSV and JSON download buttons, reused by both tabs. |
 | `MigrateTab` | Container for the Migrate tab with Star Repos / Follow Users sub-tabs. |
-| `StarManager` | Import a repo list (paste/upload), check star status, star/unstar individually or in bulk. |
-| `FollowManager` | Import a user list (paste/upload), check follow status, follow/unfollow individually or in bulk. |
+| `StarManager` | Import a repo list (paste/upload), check star status, star/unstar individually or in bulk. Uses `parseRepoLines` from `lib/parsers`. |
+| `FollowManager` | Import a user list (paste/upload), check follow status, follow/unfollow individually or in bulk. Uses `parseUserLines` from `lib/parsers`. |
 | `FileImport` | Reusable textarea + file-upload component that parses lines and emits them to the parent. |
 
 ---
@@ -219,18 +274,27 @@ src/
 
 All data comes from the public [GitHub REST API v3](https://docs.github.com/en/rest).
 
+Internally, a generic `paginatedFetch<T>()` helper handles all paginated endpoints — following `Link: <…>; rel="next"` headers, accumulating results, and reporting progress. Shared `repoUrl()` and `userUrl()` helpers build endpoint URLs with proper encoding.
+
 **Explorer endpoints:**
 - **`fetchUser(username, token?)`** — `GET /users/:username`. Returns the `GitHubUser` profile.
-- **`fetchStarredRepos(username, token?, onProgress?)`** — `GET /users/:username/starred`. Paginates through all pages (100 per page) by following the `Link: <…>; rel="next"` header. Calls `onProgress` after each page so the UI can show a count.
+- **`fetchStarredRepos(username, token?, onProgress?)`** — `GET /users/:username/starred`. Paginates through all pages (100 per page). Calls `onProgress` after each page so the UI can show a count.
 - **`fetchFollowing(username, token?, onProgress?)`** — `GET /users/:username/following`. Same pagination strategy.
 
 **Migrate endpoints (all require a PAT):**
-- **`fetchAllStarredRepoNames(token, onProgress?)`** — fetches all repos the authenticated user has starred. Returns a `Set<string>` of `owner/repo` names.
+- **`fetchAllStarredRepoNames(token, onProgress?)`** — fetches all repos the authenticated user has starred. Returns a `Set<string>` of `owner/repo` names. Silently stops on errors (partial results are acceptable).
 - **`starRepo(repo, token)`** / **`unstarRepo(repo, token)`** — `PUT` / `DELETE /user/starred/:owner/:repo`.
 - **`checkFollowingUser(username, token)`** — `GET /user/following/:username`. Returns `true` (204) if following.
 - **`followUser(username, token)`** / **`unfollowUser(username, token)`** — `PUT` / `DELETE /user/following/:username`.
 
 If a token is provided it is sent as a `Bearer` token in the `Authorization` header.
+
+### `src/lib/parsers.ts`
+
+Shared line-parsing functions used by both the Migrate UI components and the integration tests:
+
+- **`parseRepoLines(lines)`** — normalises `owner/repo` or `https://github.com/owner/repo` lines. Strips URL prefixes and trailing slashes; discards lines without a `/`.
+- **`parseUserLines(lines)`** — normalises plain usernames, GitHub profile URLs, or CSV rows (first column). Trims whitespace, strips URL prefixes, skips the `username` CSV header, and discards entries that still contain a `/`.
 
 ### `src/lib/export.ts`
 
@@ -244,6 +308,7 @@ If a token is provided it is sent as a `Bearer` token in the `Authorization` hea
 | File | Purpose |
 |------|---------|
 | `next.config.ts` | Sets `allowedDevOrigins` for the dev server. Add your network IP here if you access the app from another device (see Troubleshooting). |
+| `vitest.config.ts` | Vitest test runner config — jsdom environment, `@/*` path alias, setup file, CSS disabled. |
 | `components.json` | shadcn/ui config — base-nova style, Lucide icons, Tailwind CSS variables, path aliases. |
 | `tsconfig.json` | TypeScript config with `@/*` path alias pointing to `./src/*`. |
 
