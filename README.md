@@ -92,6 +92,79 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
+## Generating Input Files with GitHub CLI
+
+The **Migrate** tab accepts plain-text input files. You can generate these from any GitHub account using the [GitHub CLI](https://cli.github.com/) (`gh`).
+
+> **Prerequisite:** `gh` must be installed and authenticated — run `gh auth login` if you haven't already.
+
+### Starred Repos → `starred_repos.txt`
+
+Each line should be either `owner/repo` or `https://github.com/owner/repo`.
+
+**`owner/repo` format (any user):**
+
+```bash
+gh api "/users/oppenheimmer/starred" --paginate --jq '.[].full_name' > starred_repos.txt
+```
+
+**Full-URL format:**
+
+```bash
+gh api "/users/oppenheimmer/starred" --paginate --jq '"https://github.com/" + .full_name' > starred_repos.txt
+```
+
+**Your own authenticated account (shorthand):**
+
+```bash
+gh api "/user/starred" --paginate --jq '.[].full_name' > starred_repos.txt
+```
+
+Example output (`starred_repos.txt`):
+
+```
+torvalds/linux
+facebook/react
+vercel/next.js
+```
+
+Feed this file into **Migrate → Star Repos** via paste or file upload.
+
+### Following Users → `following.txt` / `following.csv`
+
+Each line should be a single GitHub username.
+
+**Plain username list (any user):**
+
+```bash
+gh api "/users/oppenheimmer/following" --paginate --jq '.[].login' > following.txt
+```
+
+**CSV with a `username` header (matches the Explorer export format):**
+
+```bash
+echo "username" > following.csv && \
+  gh api "/users/oppenheimmer/following" --paginate --jq '.[].login' >> following.csv
+```
+
+**Your own authenticated account (shorthand):**
+
+```bash
+gh api "/user/following" --paginate --jq '.[].login' > following.txt
+```
+
+Example output (`following.txt`):
+
+```
+torvalds
+gaborcsardi
+mitchellh
+```
+
+Feed this file into **Migrate → Follow Users** via paste or file upload.
+
+---
+
 ## Project Structure
 
 ```
